@@ -13,8 +13,12 @@ Version: 1.0.0
 
 import streamlit as st
 import pandas as pd
-from typing import Optional, Tuple
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
+from typing import Optional, Tuple, List
 import io
+import numpy as np
 
 
 # ============================================================================
@@ -288,6 +292,247 @@ def display_data_info(df: pd.DataFrame) -> None:
 
 
 # ============================================================================
+# VISUALIZATION COMPONENTS
+# ============================================================================
+def detect_sales_columns(df: pd.DataFrame) -> List[str]:
+    """
+    Detect columns that appear to be sales-related.
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        List of column names that look like sales columns
+    """
+    sales_keywords = [
+        'sales', 'revenue', 'amount', 'total', 'price',
+        'quantity', 'units', 'qty', 'cost', 'profit',
+        'income', 'earnings', 'value'
+    ]
+    
+    detected_columns = []
+    for col in df.columns:
+        col_lower = col.lower()
+        if any(keyword in col_lower for keyword in sales_keywords):
+            # Check if column contains numeric data
+            if pd.api.types.is_numeric_dtype(df[col]):
+                detected_columns.append(col)
+    
+    return detected_columns
+
+
+def detect_category_columns(df: pd.DataFrame) -> List[str]:
+    """
+    Detect columns that can be used as categories for pie charts.
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        List of categorical column names
+    """
+    category_keywords = [
+        'category', 'type', 'status', 'region', 'state',
+        'country', 'city', 'product', 'department', 'name',
+        'brand', 'segment'
+    ]
+    
+    detected_columns = []
+    for col in df.columns:
+        col_lower = col.lower()
+        # Check if it's categorical
+        if df[col].dtype == 'object' or df[col].nunique() < 50:
+            if any(keyword in col_lower for keyword in category_keywords):
+                detected_columns.append(col)
+    
+    return detected_columns
+
+
+def create_pie_chart_by_category(df: pd.DataFrame, values_col: str, category_col: str) -> None:
+    """
+    Create and display an interactive pie chart.
+    
+    Args:
+        df: Input DataFrame
+        values_col: Column with values for pie chart
+        category_col: Column with categories
+    """
+    try:
+        # Group by category and sum values
+        grouped_data = df.groupby(category_col)[values_col].sum().reset_index()
+        grouped_data = grouped_data.sort_values(values_col, ascending=False)
+        
+        # Create interactive pie chart using Plotly
+        fig = px.pie(
+            grouped_data,
+            values=values_col,
+            names=category_col,
+            title=f"📊 {values_col} by {category_col}",
+            hole=0,  # Set to 0 for full pie, 0.3 for donut
+            color_discrete_sequence=px.colors.qualitative.Set3
+        )
+        
+        fig.update_traces(
+            textposition='inside',
+            textinfo='percent+label',
+            hovertemplate='<b>%{label}</b><br>%{value:.2f}<br>%{percent}<extra></extra>'
+        )
+        
+        fig.update_layout(
+            showlegend=True,
+            height=600,
+            font=dict(size=12)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"❌ Error creating pie chart: {str(e)}")
+
+
+def create_sales_summary_dashboard(df: pd.DataFrame, sales_cols: List[str]) -> None:
+    """
+    Create a summary dashboard for sales data.
+    
+    Args:
+        df: Input DataFrame
+        sales_cols: List of sales column names
+    """
+    st.subheader("💰 Sales Summary Dashboard")
+    
+    # Create columns for metrics
+    cols = st.columns(len(sales_cols))
+    
+    for idx, col in enumerate(sales_cols):
+        with cols[idx]:
+            total = df[col].sum()
+            avg = df[col].mean()
+            max_val = df[col].max()
+            
+            st.metric(
+                label=f"Total {col}",
+                value=f"${total:,.2f}" if isinstance(total, (int, float)) else f"{total:,.0f}"
+            )
+            
+            with st.expander(f"📈 {col} Details"):
+                st.write(f"**Average:** ${avg:,.2f}" if isinstance(avg, (int, float)) else f"**Average:** {avg:,.0f}")
+                st.write(f"**Maximum:** ${max_val:,.2f}" if isinstance(max_val, (int, float)) else f"**Maximum:** {max_val:,.0f}")
+                st.write(f"**Minimum:** ${df[col].min():,.2f}" if isinstance(df[col].min(), (int, float)) else f"**Minimum:** {df[col].min():,.0f}")
+
+
+def display_pie_charts_section(df: pd.DataFrame) -> None:
+    """
+    Display pie chart visualizations section.
+    
+    Args:
+        df: Input DataFrame
+    """
+    st.divider()
+    st.subheader("📈 Sales Pie Charts Analysis")
+    
+    # Detect sales and category columns
+    sales_columns = detect_sales_columns(df)
+    category_columns = detect_category_columns(df)
+    
+    if not sales_columns:
+        st.info("ℹ️ No sales-related columns detected. Add columns with names like 'Sales', 'Revenue', 'Amount', etc.")
+        return
+    
+    if not category_columns:
+        st.info("ℹ️ No category columns detected for grouping. Add columns with names like 'Category', 'Product', 'Region', etc.")
+        return
+    
+    # Show sales summary
+    create_sales_summary_dashboard(df, sales_columns)
+    
+    st.divider()
+    st.write("### 🔍 Detailed Pie Charts")
+    
+    # Create tabs for each sales column
+    if len(sales_columns) > 1:
+        tabs = st.tabs([f"📊 {col}" for col in sales_columns])
+        
+        for tab_idx, (tab, sales_col) in enumerate(zip(tabs, sales_columns)):
+            with tab:
+                # Let user select category column
+                selected_category = st.selectbox(
+                    f"Select category for {sales_col}",
+                    category_columns,
+                    key=f"category_{sales_col}"
+                )
+                
+                # Create pie chart
+                create_pie_chart_by_category(df, sales_col, selected_category)
+                
+                # Show data table
+                with st.expander(f"📋 View {sales_col} data"):
+                    grouped = df.groupby(selected_category)[sales_col].agg(['sum', 'count', 'mean']).reset_index()
+                    grouped.columns = [selected_category, 'Total', 'Count', 'Average']
+                    st.dataframe(grouped, use_container_width=True)
+    else:
+        # Single sales column
+        sales_col = sales_columns[0]
+        
+        # Let user select category column
+        selected_category = st.selectbox(
+            f"Select category for {sales_col}",
+            category_columns,
+            key=f"category_{sales_col}"
+        )
+        
+        # Create pie chart
+        create_pie_chart_by_category(df, sales_col, selected_category)
+        
+        # Show data table
+        with st.expander(f"📋 View {sales_col} data"):
+            grouped = df.groupby(selected_category)[sales_col].agg(['sum', 'count', 'mean']).reset_index()
+            grouped.columns = [selected_category, 'Total', 'Count', 'Average']
+            st.dataframe(grouped, use_container_width=True)
+
+
+def display_numerical_distributions(df: pd.DataFrame) -> None:
+    """
+    Display distribution charts for numerical columns.
+    
+    Args:
+        df: Input DataFrame
+    """
+    st.divider()
+    st.subheader("📊 Numerical Data Distributions")
+    
+    # Get numeric columns
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    
+    if not numeric_cols:
+        st.info("ℹ️ No numerical columns found.")
+        return
+    
+    # Let user select column for histogram
+    selected_col = st.selectbox(
+        "Select a column for distribution analysis",
+        numeric_cols,
+        key="distribution_col"
+    )
+    
+    # Create histogram
+    fig = px.histogram(
+        df,
+        x=selected_col,
+        nbins=30,
+        title=f"Distribution of {selected_col}",
+        color_discrete_sequence=["#636EFA"]
+    )
+    
+    fig.update_layout(
+        xaxis_title=selected_col,
+        yaxis_title="Frequency",
+        height=500
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ============================================================================
 # MAIN APPLICATION LOGIC
 # ============================================================================
 def main() -> None:
@@ -302,6 +547,7 @@ def main() -> None:
     5. Validate file
     6. Load and display data
     7. Show statistics
+    8. Display visualizations (pie charts)
     """
     # Initialize page
     configure_page()
@@ -336,7 +582,13 @@ def main() -> None:
                 st.divider()
                 display_data_info(df)
                 
-                # Step 7: Download processed data option
+                # Step 7: Display pie charts and visualizations
+                display_pie_charts_section(df)
+                
+                # Step 8: Display distribution charts
+                display_numerical_distributions(df)
+                
+                # Step 9: Download processed data option
                 st.divider()
                 st.subheader("💾 Export Options")
                 csv_data = df.to_csv(index=False)
