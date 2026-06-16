@@ -1,18 +1,24 @@
 """
 LLM integration helper module
 """
+import json
+import logging
 import os
 from typing import Dict, Any, List
-import json
+
+logger = logging.getLogger(__name__)
 
 
 class LLMHelper:
     """Helper class for LLM integrations"""
     
+    _ALLOWED_MODELS = {"gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini"}
+
     def __init__(self):
         """Initialize LLMHelper"""
         self.api_key = os.getenv("OPENAI_API_KEY")
-        self.model = os.getenv("LLM_MODEL", "gpt-3.5-turbo")
+        model = os.getenv("LLM_MODEL", "gpt-3.5-turbo")
+        self.model = model if model in self._ALLOWED_MODELS else "gpt-3.5-turbo"
     
     def get_insights(self, analysis_results: Dict[str, Any]) -> str:
         """
@@ -32,8 +38,9 @@ class LLMHelper:
             insights = self._call_llm(prompt)
             
             return insights
-        except Exception as e:
-            return f"Error generating insights: {str(e)}"
+        except Exception:
+            logger.exception("Error generating insights")
+            return "Error generating insights. Please try again later."
     
     def _format_prompt(self, analysis_results: Dict[str, Any]) -> str:
         """Format analysis results into a prompt for LLM"""
@@ -73,8 +80,9 @@ class LLMHelper:
             # return response.choices[0].message.content
             
             return "LLM integration not yet implemented"
-        except Exception as e:
-            return f"Error calling LLM: {str(e)}"
+        except Exception:
+            logger.exception("Error calling LLM")
+            return "Error calling LLM service. Please try again later."
     
     def generate_report(self, analysis_results: Dict[str, Any]) -> str:
         """Generate a comprehensive analysis report"""
