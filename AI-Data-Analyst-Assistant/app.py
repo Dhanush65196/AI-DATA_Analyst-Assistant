@@ -13,12 +13,16 @@ Version: 1.0.0
 
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 import plotly.express as px
 from typing import Optional, Tuple, List
 import io
-import numpy as np
+
+from utils.data_profiler import (
+    get_data_profile,
+    get_missing_values_report,
+    get_numeric_columns,
+)
+from utils.column_detector import detect_sales_columns, detect_category_columns
 
 
 # ============================================================================
@@ -36,7 +40,7 @@ def configure_page() -> None:
     """
     st.set_page_config(
         page_title="AI Data Analyst Assistant",
-        page_icon="📊",
+        page_icon="\U0001f4ca",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -94,14 +98,14 @@ def validate_csv_file(uploaded_file: io.BytesIO) -> Tuple[bool, str]:
     
     # Check file extension
     if not uploaded_file.name.endswith('.csv'):
-        return False, "⚠️ Please upload a CSV file"
+        return False, "\u26a0\ufe0f Please upload a CSV file"
     
     # Check file size (max 50MB)
     file_size_mb = uploaded_file.size / (1024 * 1024)
     if file_size_mb > 50:
-        return False, f"⚠️ File size ({file_size_mb:.2f}MB) exceeds 50MB limit"
+        return False, f"\u26a0\ufe0f File size ({file_size_mb:.2f}MB) exceeds 50MB limit"
     
-    return True, "✅ File validation passed"
+    return True, "\u2705 File validation passed"
 
 
 def load_csv_file(uploaded_file: io.BytesIO) -> Optional[pd.DataFrame]:
@@ -119,36 +123,11 @@ def load_csv_file(uploaded_file: io.BytesIO) -> Optional[pd.DataFrame]:
         df = pd.read_csv(uploaded_file)
         return df
     except pd.errors.ParserError as e:
-        st.error(f"❌ Error parsing CSV file: {str(e)}")
+        st.error(f"\u274c Error parsing CSV file: {str(e)}")
         return None
     except Exception as e:
-        st.error(f"❌ Unexpected error: {str(e)}")
+        st.error(f"\u274c Unexpected error: {str(e)}")
         return None
-
-
-def get_data_summary(df: pd.DataFrame) -> dict:
-    """
-    Generate comprehensive data summary statistics.
-    
-    Args:
-        df: Input DataFrame
-        
-    Returns:
-        Dictionary containing:
-        - Shape (rows, columns)
-        - Column info
-        - Data types
-        - Missing values count
-        - Memory usage
-    """
-    return {
-        "rows": df.shape[0],
-        "columns": df.shape[1],
-        "column_names": list(df.columns),
-        "dtypes": df.dtypes.to_dict(),
-        "missing_values": df.isnull().sum().to_dict(),
-        "memory_usage_mb": df.memory_usage(deep=True).sum() / (1024 ** 2)
-    }
 
 
 # ============================================================================
@@ -156,16 +135,16 @@ def get_data_summary(df: pd.DataFrame) -> dict:
 # ============================================================================
 def display_header() -> None:
     """Display the main header and description."""
-    st.title("📊 AI Data Analyst Assistant")
+    st.title("\U0001f4ca AI Data Analyst Assistant")
     st.markdown(
         """
         Welcome! This tool helps you analyze CSV data files with ease.
         
         **Features:**
-        - 📁 Upload CSV files
-        - 📈 View data preview
-        - 📊 Statistical analysis
-        - 💡 Data insights
+        - \U0001f4c1 Upload CSV files
+        - \U0001f4c8 View data preview
+        - \U0001f4ca Statistical analysis
+        - \U0001f4a1 Data insights
         """
     )
     st.divider()
@@ -193,7 +172,7 @@ def display_success_message(filename: str) -> None:
     Args:
         filename: Name of the uploaded file
     """
-    st.success(f"✅ Successfully loaded: **{filename}**")
+    st.success(f"\u2705 Successfully loaded: **{filename}**")
     st.markdown("---")
 
 
@@ -205,7 +184,7 @@ def display_data_preview(df: pd.DataFrame, num_rows: int = 5) -> None:
         df: Input DataFrame
         num_rows: Number of rows to display (default: 5)
     """
-    st.subheader(f"📋 First {num_rows} Rows")
+    st.subheader(f"\U0001f4cb First {num_rows} Rows")
     
     # Display as an interactive table
     st.dataframe(
@@ -222,34 +201,34 @@ def display_data_statistics(df: pd.DataFrame) -> None:
     Args:
         df: Input DataFrame
     """
-    summary = get_data_summary(df)
+    profile = get_data_profile(df)
     
     # Create columns for better layout
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric(
-            label="📊 Total Rows",
-            value=f"{summary['rows']:,}"
+            label="\U0001f4ca Total Rows",
+            value=f"{profile['rows']:,}"
         )
     
     with col2:
         st.metric(
-            label="📋 Total Columns",
-            value=summary['columns']
+            label="\U0001f4cb Total Columns",
+            value=profile['columns']
         )
     
     with col3:
         st.metric(
-            label="💾 Memory Usage",
-            value=f"{summary['memory_usage_mb']:.2f} MB"
+            label="\U0001f4be Memory Usage",
+            value=f"{profile['memory_usage_mb']:.2f} MB"
         )
     
     with col4:
         # Count missing values
-        total_missing = sum(summary['missing_values'].values())
+        total_missing = sum(profile['missing_values'].values())
         st.metric(
-            label="⚠️ Missing Values",
+            label="\u26a0\ufe0f Missing Values",
             value=total_missing
         )
 
@@ -261,7 +240,7 @@ def display_data_info(df: pd.DataFrame) -> None:
     Args:
         df: Input DataFrame
     """
-    st.subheader("📊 Data Information")
+    st.subheader("\U0001f4ca Data Information")
     
     # Create tabs for different views
     tab1, tab2, tab3 = st.tabs(["Column Types", "Missing Values", "Statistics"])
@@ -275,12 +254,7 @@ def display_data_info(df: pd.DataFrame) -> None:
         st.dataframe(dtype_df, use_container_width=True)
     
     with tab2:
-        # Display missing value counts
-        missing_df = pd.DataFrame({
-            "Column": df.columns,
-            "Missing Count": df.isnull().sum().values,
-            "Missing %": (df.isnull().sum().values / len(df) * 100).round(2)
-        })
+        missing_df = get_missing_values_report(df)
         st.dataframe(missing_df, use_container_width=True)
     
     with tab3:
@@ -294,60 +268,6 @@ def display_data_info(df: pd.DataFrame) -> None:
 # ============================================================================
 # VISUALIZATION COMPONENTS
 # ============================================================================
-def detect_sales_columns(df: pd.DataFrame) -> List[str]:
-    """
-    Detect columns that appear to be sales-related.
-    
-    Args:
-        df: Input DataFrame
-        
-    Returns:
-        List of column names that look like sales columns
-    """
-    sales_keywords = [
-        'sales', 'revenue', 'amount', 'total', 'price',
-        'quantity', 'units', 'qty', 'cost', 'profit',
-        'income', 'earnings', 'value'
-    ]
-    
-    detected_columns = []
-    for col in df.columns:
-        col_lower = col.lower()
-        if any(keyword in col_lower for keyword in sales_keywords):
-            # Check if column contains numeric data
-            if pd.api.types.is_numeric_dtype(df[col]):
-                detected_columns.append(col)
-    
-    return detected_columns
-
-
-def detect_category_columns(df: pd.DataFrame) -> List[str]:
-    """
-    Detect columns that can be used as categories for pie charts.
-    
-    Args:
-        df: Input DataFrame
-        
-    Returns:
-        List of categorical column names
-    """
-    category_keywords = [
-        'category', 'type', 'status', 'region', 'state',
-        'country', 'city', 'product', 'department', 'name',
-        'brand', 'segment'
-    ]
-    
-    detected_columns = []
-    for col in df.columns:
-        col_lower = col.lower()
-        # Check if it's categorical
-        if df[col].dtype == 'object' or df[col].nunique() < 50:
-            if any(keyword in col_lower for keyword in category_keywords):
-                detected_columns.append(col)
-    
-    return detected_columns
-
-
 def create_pie_chart_by_category(df: pd.DataFrame, values_col: str, category_col: str) -> None:
     """
     Create and display an interactive pie chart.
@@ -367,7 +287,7 @@ def create_pie_chart_by_category(df: pd.DataFrame, values_col: str, category_col
             grouped_data,
             values=values_col,
             names=category_col,
-            title=f"📊 {values_col} by {category_col}",
+            title=f"\U0001f4ca {values_col} by {category_col}",
             hole=0,  # Set to 0 for full pie, 0.3 for donut
             color_discrete_sequence=px.colors.qualitative.Set3
         )
@@ -387,7 +307,7 @@ def create_pie_chart_by_category(df: pd.DataFrame, values_col: str, category_col
         st.plotly_chart(fig, use_container_width=True)
         
     except Exception as e:
-        st.error(f"❌ Error creating pie chart: {str(e)}")
+        st.error(f"\u274c Error creating pie chart: {str(e)}")
 
 
 def create_sales_summary_dashboard(df: pd.DataFrame, sales_cols: List[str]) -> None:
@@ -398,7 +318,7 @@ def create_sales_summary_dashboard(df: pd.DataFrame, sales_cols: List[str]) -> N
         df: Input DataFrame
         sales_cols: List of sales column names
     """
-    st.subheader("💰 Sales Summary Dashboard")
+    st.subheader("\U0001f4b0 Sales Summary Dashboard")
     
     # Create columns for metrics
     cols = st.columns(len(sales_cols))
@@ -414,10 +334,39 @@ def create_sales_summary_dashboard(df: pd.DataFrame, sales_cols: List[str]) -> N
                 value=f"${total:,.2f}" if isinstance(total, (int, float)) else f"{total:,.0f}"
             )
             
-            with st.expander(f"📈 {col} Details"):
+            with st.expander(f"\U0001f4c8 {col} Details"):
                 st.write(f"**Average:** ${avg:,.2f}" if isinstance(avg, (int, float)) else f"**Average:** {avg:,.0f}")
                 st.write(f"**Maximum:** ${max_val:,.2f}" if isinstance(max_val, (int, float)) else f"**Maximum:** {max_val:,.0f}")
                 st.write(f"**Minimum:** ${df[col].min():,.2f}" if isinstance(df[col].min(), (int, float)) else f"**Minimum:** {df[col].min():,.0f}")
+
+
+def _display_sales_pie_chart(
+    df: pd.DataFrame,
+    sales_col: str,
+    category_columns: List[str],
+) -> None:
+    """
+    Render a category selector, pie chart, and grouped-data expander for
+    a single *sales_col*.  Extracted to eliminate the code that was
+    duplicated across the single- and multi-column branches of
+    ``display_pie_charts_section``.
+    """
+    selected_category = st.selectbox(
+        f"Select category for {sales_col}",
+        category_columns,
+        key=f"category_{sales_col}",
+    )
+
+    create_pie_chart_by_category(df, sales_col, selected_category)
+
+    with st.expander(f"\U0001f4cb View {sales_col} data"):
+        grouped = (
+            df.groupby(selected_category)[sales_col]
+            .agg(["sum", "count", "mean"])
+            .reset_index()
+        )
+        grouped.columns = [selected_category, "Total", "Count", "Average"]
+        st.dataframe(grouped, use_container_width=True)
 
 
 def display_pie_charts_section(df: pd.DataFrame) -> None:
@@ -428,66 +377,33 @@ def display_pie_charts_section(df: pd.DataFrame) -> None:
         df: Input DataFrame
     """
     st.divider()
-    st.subheader("📈 Sales Pie Charts Analysis")
+    st.subheader("\U0001f4c8 Sales Pie Charts Analysis")
     
     # Detect sales and category columns
     sales_columns = detect_sales_columns(df)
     category_columns = detect_category_columns(df)
     
     if not sales_columns:
-        st.info("ℹ️ No sales-related columns detected. Add columns with names like 'Sales', 'Revenue', 'Amount', etc.")
+        st.info("\u2139\ufe0f No sales-related columns detected. Add columns with names like 'Sales', 'Revenue', 'Amount', etc.")
         return
     
     if not category_columns:
-        st.info("ℹ️ No category columns detected for grouping. Add columns with names like 'Category', 'Product', 'Region', etc.")
+        st.info("\u2139\ufe0f No category columns detected for grouping. Add columns with names like 'Category', 'Product', 'Region', etc.")
         return
     
     # Show sales summary
     create_sales_summary_dashboard(df, sales_columns)
     
     st.divider()
-    st.write("### 🔍 Detailed Pie Charts")
+    st.write("### \U0001f50d Detailed Pie Charts")
     
-    # Create tabs for each sales column
     if len(sales_columns) > 1:
-        tabs = st.tabs([f"📊 {col}" for col in sales_columns])
-        
-        for tab_idx, (tab, sales_col) in enumerate(zip(tabs, sales_columns)):
+        tabs = st.tabs([f"\U0001f4ca {col}" for col in sales_columns])
+        for tab, sales_col in zip(tabs, sales_columns):
             with tab:
-                # Let user select category column
-                selected_category = st.selectbox(
-                    f"Select category for {sales_col}",
-                    category_columns,
-                    key=f"category_{sales_col}"
-                )
-                
-                # Create pie chart
-                create_pie_chart_by_category(df, sales_col, selected_category)
-                
-                # Show data table
-                with st.expander(f"📋 View {sales_col} data"):
-                    grouped = df.groupby(selected_category)[sales_col].agg(['sum', 'count', 'mean']).reset_index()
-                    grouped.columns = [selected_category, 'Total', 'Count', 'Average']
-                    st.dataframe(grouped, use_container_width=True)
+                _display_sales_pie_chart(df, sales_col, category_columns)
     else:
-        # Single sales column
-        sales_col = sales_columns[0]
-        
-        # Let user select category column
-        selected_category = st.selectbox(
-            f"Select category for {sales_col}",
-            category_columns,
-            key=f"category_{sales_col}"
-        )
-        
-        # Create pie chart
-        create_pie_chart_by_category(df, sales_col, selected_category)
-        
-        # Show data table
-        with st.expander(f"📋 View {sales_col} data"):
-            grouped = df.groupby(selected_category)[sales_col].agg(['sum', 'count', 'mean']).reset_index()
-            grouped.columns = [selected_category, 'Total', 'Count', 'Average']
-            st.dataframe(grouped, use_container_width=True)
+        _display_sales_pie_chart(df, sales_columns[0], category_columns)
 
 
 def display_numerical_distributions(df: pd.DataFrame) -> None:
@@ -498,13 +414,13 @@ def display_numerical_distributions(df: pd.DataFrame) -> None:
         df: Input DataFrame
     """
     st.divider()
-    st.subheader("📊 Numerical Data Distributions")
+    st.subheader("\U0001f4ca Numerical Data Distributions")
     
     # Get numeric columns
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    numeric_cols = get_numeric_columns(df)
     
     if not numeric_cols:
-        st.info("ℹ️ No numerical columns found.")
+        st.info("\u2139\ufe0f No numerical columns found.")
         return
     
     # Let user select column for histogram
@@ -590,7 +506,7 @@ def main() -> None:
                 
                 # Step 9: Download processed data option
                 st.divider()
-                st.subheader("💾 Export Options")
+                st.subheader("\U0001f4be Export Options")
                 csv_data = df.to_csv(index=False)
                 st.download_button(
                     label="Download as CSV",
@@ -603,7 +519,7 @@ def main() -> None:
             st.error(validation_message)
     else:
         # Display initial instruction
-        st.info("👆 Upload a CSV file to get started!")
+        st.info("\U0001f446 Upload a CSV file to get started!")
 
 
 # ============================================================================
