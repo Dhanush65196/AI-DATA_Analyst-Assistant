@@ -11,6 +11,8 @@ Author: Data Analyst Team
 Version: 1.0.0
 """
 
+import logging
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -19,6 +21,8 @@ import plotly.express as px
 from typing import Optional, Tuple, List
 import io
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -115,14 +119,23 @@ def load_csv_file(uploaded_file: io.BytesIO) -> Optional[pd.DataFrame]:
         DataFrame if successful, None otherwise
     """
     try:
-        # Read CSV file with error handling
         df = pd.read_csv(uploaded_file)
         return df
+    except pd.errors.EmptyDataError:
+        st.error("❌ The uploaded CSV file is empty.")
+        logger.warning("Empty CSV file uploaded: %s", uploaded_file.name)
+        return None
     except pd.errors.ParserError as e:
-        st.error(f"❌ Error parsing CSV file: {str(e)}")
+        st.error(f"❌ Error parsing CSV file: {e}")
+        logger.error("CSV parse error for '%s': %s", uploaded_file.name, e)
+        return None
+    except UnicodeDecodeError as e:
+        st.error(f"❌ File encoding error: {e}")
+        logger.error("Encoding error for '%s': %s", uploaded_file.name, e)
         return None
     except Exception as e:
-        st.error(f"❌ Unexpected error: {str(e)}")
+        st.error(f"❌ Unexpected error loading file: {e}")
+        logger.exception("Unexpected error loading '%s'", uploaded_file.name)
         return None
 
 
@@ -386,8 +399,15 @@ def create_pie_chart_by_category(df: pd.DataFrame, values_col: str, category_col
         
         st.plotly_chart(fig, use_container_width=True)
         
+    except KeyError as e:
+        st.error(f"❌ Column not found while creating pie chart: {e}")
+        logger.error("Missing column for pie chart (%s, %s): %s", values_col, category_col, e)
+    except (TypeError, ValueError) as e:
+        st.error(f"❌ Data error in pie chart: {e}")
+        logger.error("Data error in pie chart (%s, %s): %s", values_col, category_col, e)
     except Exception as e:
-        st.error(f"❌ Error creating pie chart: {str(e)}")
+        st.error(f"❌ Unexpected error creating pie chart: {e}")
+        logger.exception("Unexpected error creating pie chart (%s, %s)", values_col, category_col)
 
 
 def create_sales_summary_dashboard(df: pd.DataFrame, sales_cols: List[str]) -> None:
