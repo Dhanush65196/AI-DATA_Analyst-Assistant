@@ -11,14 +11,21 @@ Author: Data Analyst Team
 Version: 1.0.0
 """
 
+import logging
+import io
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
-from typing import Optional, Tuple, List
-import io
 import numpy as np
+from typing import Optional, Tuple, List
+
+logger = logging.getLogger(__name__)
+
+MAX_UPLOAD_SIZE_MB = 50
+_ALLOWED_CSV_CONTENT_TYPES = {"text/csv", "application/vnd.ms-excel"}
 
 
 # ============================================================================
@@ -96,11 +103,16 @@ def validate_csv_file(uploaded_file: io.BytesIO) -> Tuple[bool, str]:
     if not uploaded_file.name.endswith('.csv'):
         return False, "⚠️ Please upload a CSV file"
     
-    # Check file size (max 50MB)
+    # Check file size
     file_size_mb = uploaded_file.size / (1024 * 1024)
-    if file_size_mb > 50:
-        return False, f"⚠️ File size ({file_size_mb:.2f}MB) exceeds 50MB limit"
-    
+    if file_size_mb > MAX_UPLOAD_SIZE_MB:
+        return False, f"⚠️ File size ({file_size_mb:.2f}MB) exceeds {MAX_UPLOAD_SIZE_MB}MB limit"
+
+    # Validate content type when available
+    if hasattr(uploaded_file, 'type') and uploaded_file.type:
+        if uploaded_file.type not in _ALLOWED_CSV_CONTENT_TYPES:
+            return False, "⚠️ File content type is not CSV"
+
     return True, "✅ File validation passed"
 
 
@@ -118,11 +130,12 @@ def load_csv_file(uploaded_file: io.BytesIO) -> Optional[pd.DataFrame]:
         # Read CSV file with error handling
         df = pd.read_csv(uploaded_file)
         return df
-    except pd.errors.ParserError as e:
-        st.error(f"❌ Error parsing CSV file: {str(e)}")
+    except pd.errors.ParserError:
+        st.error("❌ Error parsing CSV file. Please check the file format.")
         return None
-    except Exception as e:
-        st.error(f"❌ Unexpected error: {str(e)}")
+    except Exception:
+        logger.exception("Unexpected error loading CSV")
+        st.error("❌ An unexpected error occurred while loading the file.")
         return None
 
 
@@ -387,7 +400,8 @@ def create_pie_chart_by_category(df: pd.DataFrame, values_col: str, category_col
         st.plotly_chart(fig, use_container_width=True)
         
     except Exception as e:
-        st.error(f"❌ Error creating pie chart: {str(e)}")
+        logger.exception("Error creating pie chart")
+        st.error("❌ Error creating pie chart. Please check your data.")
 
 
 def create_sales_summary_dashboard(df: pd.DataFrame, sales_cols: List[str]) -> None:
